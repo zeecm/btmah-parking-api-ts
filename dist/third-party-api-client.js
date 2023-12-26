@@ -57,13 +57,13 @@ class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
         this._PARKING_AVAILABILITY_ENDPOINT = "https://www.ura.gov.sg/uraDataService/invokeUraDS?service=Car_Park_Availability";
         this._PARKING_RATES_ENDPOINT = "https://www.ura.gov.sg/uraDataService/invokeUraDS?service=Car_Park_Details";
         this._TOKEN_ENDPOINT = "https://www.ura.gov.sg/uraDataService/insertNewToken.action";
-        this._defaultHeaders = new Map([
-            ["AccessKey", apiKey],
-        ]);
+        this._defaultHeaders = new Map([["AccessKey", apiKey]]);
     }
     _getToken() {
         return __awaiter(this, void 0, void 0, function* () {
-            return this._makeAPICallToGetToken().then((response) => response.json()).then((data) => data["Result"]);
+            return this._makeAPICallToGetToken()
+                .then((response) => response.json())
+                .then((data) => data["Result"]);
         });
     }
     _makeAPICallToGetToken() {
@@ -82,7 +82,6 @@ class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
             yield this._augmentHeaderWithToken();
             const response = yield this.makeAPICallWithRetry(endpoint, this._defaultHeaders);
             const data = yield response.json();
-            console.log(this._defaultHeaders);
             console.log(data);
         });
     }

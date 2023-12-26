@@ -104,7 +104,6 @@ export class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
       this._defaultHeaders,
     );
     const data = await response.json();
-    console.log(this._defaultHeaders);
     console.log(data);
   }
 
