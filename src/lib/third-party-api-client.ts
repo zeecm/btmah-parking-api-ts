@@ -5,14 +5,14 @@ import { RetryableFunction, wrapWithRetry } from "./utility";
 abstract class ThirdPartyParkingAPIClient {
   constructor(apiKey?: string) {}
 
-  async makeAPICallWithRetry(
+  protected async _makeAPICallWithRetry(
     endpoint: string,
     custom_headers?: Map<string, string>,
     params?: Map<string, string>,
     retries: number = 5,
   ): Promise<Response> {
     const makeAPICall = wrapWithRetry(
-      this.makeAPICall.bind(this),
+      this._makeAPICall.bind(this),
       retries,
     ) as RetryableFunction<
       [string, Map<string, string>?, Map<string, string>?],
@@ -21,16 +21,18 @@ abstract class ThirdPartyParkingAPIClient {
     return makeAPICall(endpoint, custom_headers, params);
   }
 
-  async makeAPICall(
+  protected async _makeAPICall(
     endpoint: string,
     custom_headers?: Map<string, string>,
     params?: Map<string, string>,
   ): Promise<Response> {
     const headers = this._createCustomHeader(custom_headers);
     const urlParams = this._createCustomParams(params);
-    const final_endpoint = `${endpoint}?${urlParams}`;
+    const final_endpoint = `${endpoint}${
+      urlParams !== "" ? `?${urlParams}` : ""
+    }`;
 
-    console.log("making 1 api call to", endpoint);
+    console.log("making 1 api call to", final_endpoint);
 
     const response: Response = await fetch(final_endpoint, {
       method: "GET",
@@ -51,12 +53,12 @@ abstract class ThirdPartyParkingAPIClient {
     return headers;
   }
 
-  private _createCustomParams(params?: Map<string, string>): URLSearchParams {
+  private _createCustomParams(params?: Map<string, string>): string {
     const urlParams = new URLSearchParams();
     if (typeof params != "undefined") {
       params.forEach((value, key) => urlParams.append(key, value));
     }
-    return urlParams;
+    return urlParams.toString();
   }
 
   abstract getParkingLots();
@@ -65,7 +67,7 @@ abstract class ThirdPartyParkingAPIClient {
 }
 
 export class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
-  private _defaultHeaders: Map<string, string>;
+  private authHeaders: Map<string, string>;
 
   private _PARKING_AVAILABILITY_ENDPOINT: string =
     "https://www.ura.gov.sg/uraDataService/invokeUraDS?service=Car_Park_Availability";
@@ -76,7 +78,14 @@ export class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
 
   constructor(apiKey: string) {
     super(apiKey);
-    this._defaultHeaders = new Map<string, string>([["AccessKey", apiKey]]);
+    this.authHeaders = new Map<string, string>([
+      ["AccessKey", apiKey],
+      [
+        "user-agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36",
+      ],
+      ["x-requested-with", "XMLHttpRequest"],
+    ]);
   }
 
   async _getToken(): Promise<string> {
@@ -86,22 +95,19 @@ export class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
   }
 
   private async _makeAPICallToGetToken(): Promise<Response> {
-    return this.makeAPICallWithRetry(
-      this._TOKEN_ENDPOINT,
-      this._defaultHeaders,
-    );
+    return this._makeAPICallWithRetry(this._TOKEN_ENDPOINT, this.authHeaders);
   }
 
   private async _augmentHeaderWithToken(): Promise<void> {
     const token: string = await this._getToken();
-    this._defaultHeaders.set("Token", token);
+    this.authHeaders.set("Token", token);
   }
 
   private async _makeAPICallWithToken(endpoint: string) {
     await this._augmentHeaderWithToken();
-    const response = await this.makeAPICallWithRetry(
+    const response = await this._makeAPICallWithRetry(
       endpoint,
-      this._defaultHeaders,
+      this.authHeaders,
     );
     const data = await response.json();
     console.log(data);
