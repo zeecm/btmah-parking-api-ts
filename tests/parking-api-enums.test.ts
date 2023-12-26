@@ -1,7 +1,7 @@
 import {
   ThirdPartyParkingAPI,
   ThirdPartyParkingAPIProvider,
-} from "../src/lib/third-party-parking-constants";
+} from "../src/lib/parking-api-enums";
 
 describe("testing custom third party parking api declarations", () => {
   test("able to access enum members using wrapper class", () => {
