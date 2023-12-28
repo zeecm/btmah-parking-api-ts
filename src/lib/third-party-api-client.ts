@@ -1,3 +1,9 @@
+import {
+  URAParkingAPIResponse,
+  URAParkingLotAvailabilityResponse,
+  URAParkingRateResponse,
+  URATokenResponse,
+} from "../schema/third-party-schema";
 import { RetryableFunction, wrapWithRetry } from "./utility";
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -67,7 +73,8 @@ abstract class ThirdPartyParkingAPIClient {
 }
 
 export class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
-  private authHeaders: Map<string, string>;
+  private _authHeaders: Map<string, string>;
+  private _tokenLastUpdated: Date;
 
   private _PARKING_AVAILABILITY_ENDPOINT: string =
     "https://www.ura.gov.sg/uraDataService/invokeUraDS?service=Car_Park_Availability";
@@ -78,7 +85,7 @@ export class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
 
   constructor(apiKey: string) {
     super(apiKey);
-    this.authHeaders = new Map<string, string>([
+    this._authHeaders = new Map<string, string>([
       ["AccessKey", apiKey],
       [
         "user-agent",
@@ -86,38 +93,79 @@ export class URAParkingAPIClient extends ThirdPartyParkingAPIClient {
       ],
       ["x-requested-with", "XMLHttpRequest"],
     ]);
+    this._tokenLastUpdated = new Date(0);
   }
 
-  async _getToken(): Promise<string> {
+  async _getToken(): Promise<URATokenResponse> {
     return this._makeAPICallToGetToken()
       .then((response) => response.json())
-      .then((data) => data["Result"]);
+      .then((data) => {
+        const mappedData: URATokenResponse = {
+          status: data["Status"],
+          message: data["Message"],
+          result: data["Result"] as string,
+        };
+        return mappedData;
+      });
   }
 
   private async _makeAPICallToGetToken(): Promise<Response> {
-    return this._makeAPICallWithRetry(this._TOKEN_ENDPOINT, this.authHeaders);
+    return this._makeAPICallWithRetry(this._TOKEN_ENDPOINT, this._authHeaders);
   }
 
-  private async _augmentHeaderWithToken(): Promise<void> {
-    const token: string = await this._getToken();
-    this.authHeaders.set("Token", token);
+  private async _updateHeaderWithToken(): Promise<void> {
+    const tokenResponse: URATokenResponse = await this._getToken();
+    if (tokenResponse.status == "Success") {
+      this._tokenLastUpdated = new Date();
+      this._authHeaders.set("Token", tokenResponse.result);
+    } else {
+      console.error(`failed to get token with error: ${tokenResponse.message}`);
+    }
   }
 
-  private async _makeAPICallWithToken(endpoint: string) {
-    await this._augmentHeaderWithToken();
+  private async _makeAPICallWithToken<T extends URAParkingAPIResponse>(
+    endpoint: string,
+  ): Promise<T> {
+    const tokenValid: boolean = this._checkTokenValid();
+    console.log("token valid: ", tokenValid);
+    if (!tokenValid) {
+      await this._updateHeaderWithToken();
+    }
     const response = await this._makeAPICallWithRetry(
       endpoint,
-      this.authHeaders,
+      this._authHeaders,
     );
     const data = await response.json();
-    console.log(data);
+    const mappedData: URAParkingAPIResponse = {
+      status: data["Status"],
+      message: data["Message"],
+      result: data["Result"],
+    };
+    return mappedData as T;
   }
 
-  async getParkingLots() {
-    this._makeAPICallWithToken(this._PARKING_AVAILABILITY_ENDPOINT);
+  private _checkTokenValid(): boolean {
+    console.log(this._tokenLastUpdated);
+    if (this._tokenLastUpdated == null) {
+      return false;
+    }
+    const maxAgeMilliseconds: number = 1 * 24 * 60 * 60 * 1000;
+    const currentDate: Date = new Date();
+    return (
+      currentDate.getTime() - this._tokenLastUpdated.getTime() <
+      maxAgeMilliseconds
+    );
   }
 
-  async getParkingRates() {
-    this._makeAPICallWithToken(this._PARKING_RATES_ENDPOINT);
+  async getParkingLots(): Promise<URAParkingLotAvailabilityResponse> {
+    return await this._makeAPICallWithToken<URAParkingLotAvailabilityResponse>(
+      this._PARKING_AVAILABILITY_ENDPOINT,
+    );
+  }
+
+  async getParkingRates(): Promise<URAParkingRateResponse> {
+    return await this._makeAPICallWithToken<URAParkingRateResponse>(
+      this._PARKING_RATES_ENDPOINT,
+    );
   }
 }
